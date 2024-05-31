@@ -18,7 +18,7 @@ $ ./bake # optional, bake can compile itself
 ```
 
 ## Examples
-This is the Bakefile that builds `bake` itself:
+Examples can be found in the `bake-example-proj` and `bake-hello-world` dirs. Also, this is the Bakefile that builds `bake` itself:
 ```toml
 [config]
 cc = "clang"

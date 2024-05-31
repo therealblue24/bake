@@ -3,6 +3,7 @@ bake-example-proj/bin2/helloworld2
 bake-example-proj/libbin/libp.a
 bake
 bake.dSYM
+helloworld
 .clang-format
 .cache
 compile_commands.json

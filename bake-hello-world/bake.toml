@@ -1,0 +1,34 @@
+[config]
+# compiler configs
+cc = "clang"
+ld = "clang"
+as = "clang"
+
+[project]
+# array of projects [screenname, actualname]
+sub = [["helloworld", "hw"]]
+# external deps (we have none)
+ext = []
+
+[project.hw]
+# src dir
+srcs = "."
+# bin dir
+bin = "."
+# compiler flags
+ccflags = [""]
+# include flags
+incflags = [""]
+# linker flags
+ldflags = [""]
+# type of project - exec because we want executable
+# if we wanted a library it would be:
+# type = "lib"
+type = "exec"
+# binary name
+binname = "helloworld"
+# deps
+deps = []
+
+# ignore this
+[ext]
