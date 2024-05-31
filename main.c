@@ -7,7 +7,7 @@
 #include <string.h>
 #include <dirent.h>
 
-#define VERSION "1.1.0"
+#define VERSION "1.2.0"
 
 typedef struct {
     toml_table_t *cfg;
@@ -25,9 +25,12 @@ typedef struct {
     toml_array_t *ccflags;
     toml_array_t *incflags;
     toml_array_t *ldflags;
+    toml_array_t *deps;
     char *binname;
     char *scrname;
     char *idname;
+    bool depcompiled;
+    bool cleaned;
 } bake_project_t;
 
 typedef struct {
@@ -383,23 +386,64 @@ void compile(bake_project_t p, char *name, int i, int n)
 
 void compilecleanup(bake_project_t p)
 {
-    int ccflag_cnt, incflag_cnt, ldflag_cnt;
+    int ccflag_cnt, incflag_cnt, ldflag_cnt, depcnt;
     ccflag_cnt = toml_array_nelem(p.ccflags);
     incflag_cnt = toml_array_nelem(p.incflags);
     ldflag_cnt = toml_array_nelem(p.ldflags);
+    depcnt = toml_array_nelem(p.deps);
     for(int i = 0; i < ccflag_cnt; i++) {
         free(toml_string_at(p.ccflags, i).u.s);
     }
     for(int i = 0; i < incflag_cnt; i++) {
         free(toml_string_at(p.incflags, i).u.s);
     }
-    for(int i = 0; i < incflag_cnt; i++) {
+    for(int i = 0; i < ldflag_cnt; i++) {
         free(toml_string_at(p.ldflags, i).u.s);
+    }
+    for(int i = 0; i < depcnt; i++) {
+        free(toml_string_at(p.deps, i).u.s);
     }
 }
 
 void build_project(bake_project_t p)
 {
+    if(p.depcompiled) {
+        if(!p.cleaned) {
+            p.cleaned = true;
+            compilecleanup(p);
+        }
+        return;
+    } else {
+        int depcount = toml_array_nelem(p.deps);
+        if(depcount) {
+            for(int i = 0; i < depcount; i++) {
+                toml_datum_t depnam = toml_string_at(p.deps, i);
+
+                // search for the dependice
+                int dep_indx = -1;
+                for(int i = 0; i < b.projs; i++) {
+                    if(strcmp(b.proj[i].idname, depnam.u.s) == 0) {
+                        dep_indx = i;
+                    }
+                }
+                if(dep_indx == -1) {
+                    fprintf(stderr, "error: dependicy '%s' not found\n",
+                            depnam.u.s);
+                }
+                styl_reset();
+                styl_set_bold(true);
+                styl_set_color(3);
+                tab();
+                printf("Fetching");
+                styl_reset();
+                printf(" %s\n", b.proj[dep_indx].scrname);
+                //printf("dbg: compiling dep '%s'\n", depnam.u.s);
+                build_project(b.proj[dep_indx]);
+                b.proj[dep_indx].depcompiled = true;
+            }
+        } else
+            p.depcompiled = true;
+    }
     struct dirent **list;
     int n, bn, i;
     i = 0;
@@ -453,6 +497,7 @@ bake_project_t parse_proj_toml(toml_table_t *projroot, char *target,
     toml_array_t *ccflags = toml_array_in(proj, "ccflags");
     toml_array_t *incflags = toml_array_in(proj, "incflags");
     toml_array_t *ldflags = toml_array_in(proj, "ldflags");
+    toml_array_t *deps = toml_array_in(proj, "deps");
     toml_datum_t binname = toml_string_in(proj, "binname");
     ret.srcs = srcs.u.s;
     ret.binname = binname.u.s;
@@ -462,6 +507,9 @@ bake_project_t parse_proj_toml(toml_table_t *projroot, char *target,
     ret.scrname = strdup(target_scrname);
     ret.incflags = incflags;
     ret.ldflags = ldflags;
+    ret.deps = deps;
+    ret.depcompiled = false;
+    ret.cleaned = false;
     return ret;
 }
 
@@ -547,19 +595,24 @@ int main(int argc, char *argv[])
         free(scrname.u.s);
     }
     for(int i = 0; i < b.projs; i++) {
-        tab();
-        styl_set_bold(true);
-        styl_set_color(2);
-        printf("Building ");
-        styl_reset();
-        printf("%s\n", b.proj[i].scrname);
+        bool f = b.proj[i].depcompiled;
+        if(!f) {
+            tab();
+            styl_set_bold(true);
+            styl_set_color(2);
+            printf("Building ");
+            styl_reset();
+            printf("%s\n", b.proj[i].scrname);
+        }
         build_project(b.proj[i]);
-        tab();
-        styl_set_bold(true);
-        styl_set_color(27);
-        printf("Finished ");
-        styl_reset();
-        printf("%s\n", b.proj[i].scrname);
+        if(!f) {
+            tab();
+            styl_set_bold(true);
+            styl_set_color(27);
+            printf("Finished ");
+            styl_reset();
+            printf("%s\n", b.proj[i].scrname);
+        }
     }
 
     cleanup();
