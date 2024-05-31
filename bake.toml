@@ -1,0 +1,17 @@
+[config]
+cc = "clang"
+ld = "clang"
+as = "clang"
+
+[project]
+sub = [["bake", "bake"]]
+
+[project.bake]
+srcs = "."
+bin = "."
+ccflags = ["-std=c23", "-g"]
+incflags = ["-I.", "-Itomlc99/"]
+ldflags = ["-Ltomlc99", "-ltoml"]
+type = "exec"
+binname = "bake"
+deps = []

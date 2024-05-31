@@ -1,0 +1,12 @@
+bin/helloworld
+bin2/helloworld2
+libbin/libp.a
+bake
+bake.dSYM
+.clang-format
+.cache
+compile_commands.json
+tomlc99
+*.o
+*.a
+testing

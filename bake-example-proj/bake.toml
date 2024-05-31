@@ -1,0 +1,37 @@
+[config]
+cc = "clang"
+ld = "clang"
+as = "clang"
+
+[project]
+sub = [["helloworld", "hw"], ["helloworld2", "hw2"], ["hellolib", "libp"]]
+
+[project.hw]
+srcs = "src"
+bin = "bin"
+ccflags = ["-std=c23", "-g"]
+incflags = ["-I ."]
+ldflags = [""]
+type = "exec"
+binname = "helloworld"
+deps = []
+
+[project.hw2]
+srcs = "src2"
+bin = "bin2"
+ccflags = ["-std=c23", "-g"]
+incflags = ["-I ."]
+ldflags = [""]
+type = "exec"
+binname = "helloworld2"
+deps = ["libp"]
+
+[project.libp]
+srcs = "libsrc"
+bin = "libbin"
+ccflags = ["-std=c23", "-g"]
+incflags = ["-I ."]
+ldflags = [""]
+type = "lib"
+binname = "libp.a"
+deps = []
