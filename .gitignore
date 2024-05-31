@@ -1,6 +1,6 @@
-bin/helloworld
-bin2/helloworld2
-libbin/libp.a
+bake-example-proj/bin/helloworld
+bake-example-proj/bin2/helloworld2
+bake-example-proj/libbin/libp.a
 bake
 bake.dSYM
 .clang-format
