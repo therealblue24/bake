@@ -1,4 +1,7 @@
 # Changelog for `bake`
+## 1.2.1
+- Added external dependencies support
+- Some code cleanup
 ## 1.2.0
 - Added dependencies support
 - Fixed a bug in cleanup functions

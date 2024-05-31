@@ -26,6 +26,7 @@ as = "clang"
 
 [project]
 sub = [["bake", "bake"]]
+ext = [["tomlc99", "libtoml"]]
 
 [project.bake]
 srcs = "."
@@ -36,4 +37,9 @@ ldflags = ["-Ltomlc99", "-ltoml"]
 type = "exec"
 binname = "bake"
 deps = []
+
+[ext.libtoml]
+loc = "tomlc99"
+chdir = "."
+buildcmd = ["make"]
 ```

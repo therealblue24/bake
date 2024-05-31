@@ -7,7 +7,16 @@
 #include <string.h>
 #include <dirent.h>
 
-#define VERSION "1.2.0"
+#define VERSION "1.2.1"
+
+void chdir_h(const char *path)
+{
+    if(chdir(path) != 0) {
+        perror("error: chdir() failed");
+        exit(1);
+    }
+    return;
+}
 
 typedef struct {
     toml_table_t *cfg;
@@ -34,16 +43,34 @@ typedef struct {
 } bake_project_t;
 
 typedef struct {
+    toml_array_t *buildcmd;
+    char *loc;
+    char *chdir;
+    char *scrname;
+    char *idname;
+} bake_ext_t;
+
+typedef struct {
     char bakefile[PATH_MAX];
     toml_table_t *toml;
     char err[512];
     bake_config_t cfg;
     bake_project_t *proj;
+    bake_ext_t *ext;
     toml_table_t *projlist;
+    toml_table_t *extlist;
+    toml_table_t *extroot;
     int projs;
+    int exts;
+    char cwd[PATH_MAX];
 } bake_state_t;
 
 bake_state_t b;
+
+void resetcwd()
+{
+    chdir_h(b.cwd);
+}
 
 void styl_reset()
 {
@@ -82,6 +109,18 @@ void handlerr()
         fprintf(stderr, "error to parse toml: %s\n", b.err);
         exit(1);
     }
+    if(!b.extroot) {
+        fprintf(stderr, "error to parse toml: %s\n", b.err);
+        exit(1);
+    }
+}
+
+void cleanup_ext(bake_ext_t e)
+{
+    free(e.loc);
+    free(e.idname);
+    free(e.scrname);
+    free(e.chdir);
 }
 
 void cleanup_proj(bake_project_t p)
@@ -101,11 +140,27 @@ void cleanup_projs()
     free(b.proj);
 }
 
+void cleanup_exts()
+{
+    for(int i = 0; i < b.exts; i++) {
+        cleanup_ext(b.ext[i]);
+    }
+    free(b.ext);
+}
+
 void add_proj(bake_project_t proj)
 {
     b.projs++;
     b.proj = realloc(b.proj, sizeof(bake_project_t) * b.projs);
     b.proj[b.projs - 1] = proj;
+    return;
+}
+
+void add_extproj(bake_ext_t ext)
+{
+    b.exts++;
+    b.ext = realloc(b.ext, sizeof(bake_ext_t) * b.exts);
+    b.ext[b.exts - 1] = ext;
     return;
 }
 
@@ -201,7 +256,7 @@ void _add_argv(int argcnt, char ***argv, char *toadd)
         argcnt++;                       \
     }
 
-void compile_exec(bake_project_t p, char *name, int argc, char *argv[])
+void exec(int argc, char *argv[])
 {
     int stat, exitcode;
     int forked_pid = fork();
@@ -213,12 +268,12 @@ void compile_exec(bake_project_t p, char *name, int argc, char *argv[])
         if(WIFSIGNALED(stat)) {
             fprintf(
                 stderr,
-                "error: compiler expierenced error that is not related to the compilation\n");
+                "error: program expierenced error that is not related to the compilation of project\n");
             exit(1);
         }
         exitcode = WEXITSTATUS(stat);
         if(exitcode) {
-            fprintf(stderr, "error: compiler errored, terminating bake\n");
+            fprintf(stderr, "error: program errored, terminating bake\n");
             exit(1);
         }
     }
@@ -276,7 +331,7 @@ void linkapp(bake_project_t p, struct dirent **list, int bn)
     add_argv(argc, &argv, freeme1);
     free(freeme);
     free(freeme1);
-    compile_exec(p, NULL, argc, argv);
+    exec(argc, argv);
 }
 
 void linklib(bake_project_t p, struct dirent **list, int bn)
@@ -317,7 +372,7 @@ void linklib(bake_project_t p, struct dirent **list, int bn)
     }
     free(nm);
 
-    compile_exec(p, NULL, argc, argv);
+    exec(argc, argv);
     free(arcmd);
 }
 
@@ -377,7 +432,7 @@ void compile(bake_project_t p, char *name, int i, int n)
     for(int i = 0; i < argc; i++) {
         printf("\t[%d] %s\n", i, argv[i]);
     }*/
-    compile_exec(p, name, argc, argv);
+    exec(argc, argv);
     free(nm);
     for(int i = 0; i < argc; i++) {
         free(argv[i]);
@@ -402,6 +457,14 @@ void compilecleanup(bake_project_t p)
     }
     for(int i = 0; i < depcnt; i++) {
         free(toml_string_at(p.deps, i).u.s);
+    }
+}
+
+void extcleanup(bake_ext_t e)
+{
+    int bc_cnt = toml_array_nelem(e.buildcmd);
+    for(int i = 0; i < bc_cnt; i++) {
+        free(toml_string_at(e.buildcmd, i).u.s);
     }
 }
 
@@ -467,6 +530,47 @@ void build_project(bake_project_t p)
     free(list);
 }
 
+void build_ext(bake_ext_t e)
+{
+    char bp[PATH_MAX] = { 0 };
+    strlcpy(bp, "", PATH_MAX);
+    strlcat(bp, e.loc, PATH_MAX);
+    strlcat(bp, "/", PATH_MAX);
+    strlcat(bp, e.chdir, PATH_MAX);
+    chdir_h(bp);
+    int argc = 0;
+    char **argv = malloc(1);
+    int buildcmdcount = toml_array_nelem(e.buildcmd);
+    if(buildcmdcount == 0) {
+        // ????????
+        extcleanup(e);
+        return;
+    }
+    for(int i = 0; i < buildcmdcount; i++) {
+        add_argv(argc, &argv, toml_string_at(e.buildcmd, i).u.s);
+    }
+    exec(argc, argv);
+    extcleanup(e);
+    return;
+}
+
+bake_ext_t parse_extproj_toml(toml_table_t *root, char *target,
+                              char *target_scrname)
+{
+    bake_ext_t ret;
+    toml_table_t *exttbl = toml_table_in(root, target);
+    ret.scrname = strdup(target_scrname);
+    ret.idname = strdup(target);
+    toml_datum_t chdir = toml_string_in(exttbl, "chdir");
+    toml_datum_t loc = toml_string_in(exttbl, "loc");
+    toml_array_t *buildcmd = toml_array_in(exttbl, "buildcmd");
+    ret.chdir = chdir.u.s;
+    ret.loc = loc.u.s;
+    ret.buildcmd = buildcmd;
+
+    return ret;
+}
+
 bake_project_t parse_proj_toml(toml_table_t *projroot, char *target,
                                char *target_scrname)
 {
@@ -530,9 +634,11 @@ int main(int argc, char *argv[])
     } else {
         strlcpy(b.bakefile, argv[1], PATH_MAX);
     }
+    getcwd(b.cwd, PATH_MAX);
     b.cfg.cfg = (void *)1;
     b.toml = (void *)1;
     b.projlist = (void *)1;
+    b.extroot = (void *)1;
     b.proj = malloc(1);
     tab();
     styl_set_bold(true);
@@ -570,6 +676,13 @@ int main(int argc, char *argv[])
         fprintf(stderr, "error: cannot read project.sub\n");
         exit(1);
     }
+    toml_array_t *extlist = toml_array_in(b.projlist, "ext");
+    if(!extlist) {
+        fprintf(stderr, "error: cannot read project.ext\n");
+        exit(1);
+    }
+    b.extroot = toml_table_in(b.toml, "ext");
+    handlerr();
     for(int i = 0;; i++) {
         toml_array_t *projprop = toml_array_at(projarr, i);
         if(!projprop) {
@@ -593,6 +706,42 @@ int main(int argc, char *argv[])
         add_proj(p);
         free(idname.u.s);
         free(scrname.u.s);
+    }
+    for(int i = 0;; i++) {
+        toml_array_t *extprop = toml_array_at(extlist, i);
+        if(!extprop) {
+            break;
+        }
+        toml_datum_t scrname = toml_string_at(extprop, 0);
+        if(!scrname.ok) {
+            fprintf(stderr, "error: cannot read project list\n");
+            exit(1);
+        }
+        toml_datum_t idname = toml_string_at(extprop, 1);
+        if(!idname.ok) {
+            fprintf(stderr, "error: cannot read project list\n");
+            exit(1);
+        }
+        bake_ext_t e = parse_extproj_toml(b.extroot, idname.u.s, scrname.u.s);
+        add_extproj(e);
+        free(idname.u.s);
+        free(scrname.u.s);
+    }
+    for(int i = 0; i < b.exts; i++) {
+        tab();
+        styl_set_bold(true);
+        styl_set_color(2);
+        printf("Building external ");
+        styl_reset();
+        printf("%s\n", b.ext[i].scrname);
+        build_ext(b.ext[i]);
+        tab();
+        styl_set_bold(true);
+        styl_set_color(27);
+        printf("Finished external ");
+        styl_reset();
+        printf("%s\n", b.ext[i].scrname);
+        resetcwd();
     }
     for(int i = 0; i < b.projs; i++) {
         bool f = b.proj[i].depcompiled;

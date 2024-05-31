@@ -5,6 +5,7 @@ as = "clang"
 
 [project]
 sub = [["helloworld", "hw"], ["helloworld2", "hw2"], ["hellolib", "libp"]]
+ext = []
 
 [project.hw]
 srcs = "src"
@@ -35,3 +36,5 @@ ldflags = [""]
 type = "lib"
 binname = "libp.a"
 deps = []
+
+[ext]
