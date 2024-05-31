@@ -1,8 +1,9 @@
 # Bake
-C build system. I made `bake` as a challenge initially and it turned out to be better than I expected it to be. `bake` is quite nice.
+Bake is a C build system with support for compiling both applications and libraries, as well as supporting external dependieces and other goodies.
 
 # NOTE
 you need to create the binary output directory as specified in `bake.toml`, or else `bake` will not work
+> this is temporary due to my horrendous code
 
 ## Building bake
 ```sh
