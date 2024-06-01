@@ -1,4 +1,7 @@
 # Changelog for `bake`
+## 1.2.2
+- Added support for compiling only files that changed (like how `make` does it)
+- I need to fix memory managment
 ## 1.2.1
 - Added external dependencies support
 - Some code cleanup

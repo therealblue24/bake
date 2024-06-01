@@ -5,9 +5,11 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <sys/stat.h>
 #include <dirent.h>
 
-#define VERSION "1.2.1"
+#define VERSION "1.2.2"
 
 void chdir_h(const char *path)
 {
@@ -16,6 +18,27 @@ void chdir_h(const char *path)
         exit(1);
     }
     return;
+}
+
+bool needs_rebuild(const char *output, const char *input)
+{
+    struct stat statbuf = {};
+    if(stat(input, &statbuf) < 0) {
+        fprintf(stderr, "stat(%s, /* ... */) failed: %s\n", input,
+                strerror(errno));
+        exit(1);
+    }
+    int inp_path_time = statbuf.st_mtime;
+    if(stat(output, &statbuf) < 0) {
+        if(errno == ENOENT) {
+            return true;
+        };
+        fprintf(stderr, "stat(%s, /* ... */) failed: %s\n", output,
+                strerror(errno));
+        exit(1);
+    }
+    int out_path_time = statbuf.st_mtime;
+    return inp_path_time > out_path_time;
 }
 
 typedef struct {
@@ -376,7 +399,7 @@ void linklib(bake_project_t p, struct dirent **list, int bn)
     free(arcmd);
 }
 
-void compile(bake_project_t p, char *name, int i, int n)
+void compile(bake_project_t p, char *name, char *oname, int i, int n)
 {
     printf("\r");
     tab();
@@ -412,14 +435,15 @@ void compile(bake_project_t p, char *name, int i, int n)
         add_argv(argc, &argv, toml_string_at(p.incflags, i).u.s);
     }
     char *nm = malloc(PATH_MAX);
-    strlcpy(nm, p.srcs, PATH_MAX);
+    strlcpy(nm, ".", PATH_MAX);
     strlcat(nm, "/", PATH_MAX);
     strlcat(nm, name, PATH_MAX);
     char *freeme1 = strdup("-o");
     char *freeme2 = strdup("-c");
-    char *freeme3 = strdup(nm);
-    int freeme3_indx = strlen(freeme3) - 1;
-    freeme3[freeme3_indx] = 'o';
+    char *freeme3 = malloc(PATH_MAX);
+    strlcpy(freeme3, ".", PATH_MAX);
+    strlcat(freeme3, "/", PATH_MAX);
+    strlcat(freeme3, oname, PATH_MAX);
     add_argv(argc, &argv, freeme1);
     add_argv(argc, &argv, freeme3);
     add_argv(argc, &argv, freeme2);
@@ -517,11 +541,47 @@ void build_project(bake_project_t p)
         perror("scandir");
         exit(1);
     }
+    char **outs = calloc(bn, sizeof(char *));
+    char **ins = calloc(bn, sizeof(char *));
+    char **neededo = calloc(bn, sizeof(char *));
+    char **neededc = calloc(bn, sizeof(char *));
+    int ind = 0;
     while(n--) {
         i++;
-        compile(p, list[n]->d_name, i, bn);
+        outs[i] = malloc(PATH_MAX);
+        strlcpy(outs[i], p.bindir, PATH_MAX);
+        strlcat(outs[i], "/", PATH_MAX);
+        strlcat(outs[i], list[n]->d_name, PATH_MAX);
+        outs[i][strlen(outs[i]) - 1] = 'o';
+        ins[i] = malloc(PATH_MAX);
+        strlcpy(ins[i], p.srcs, PATH_MAX);
+        strlcat(ins[i], "/", PATH_MAX);
+        strlcat(ins[i], list[n]->d_name, PATH_MAX);
     }
-    printf("\n");
+    for(int j = 0; j < i; j++) {
+        if(needs_rebuild(outs[i], ins[i])) {
+            neededo[ind] = strdup(outs[i]);
+            neededc[ind] = strdup(ins[i]);
+            ind++;
+        }
+    }
+    for(int j = 0; j < ind; j++) {
+        compile(p, neededc[j], neededo[j], j + 1, ind);
+    }
+    for(int j = 0; j < ind; j++) {
+        free(neededo[j]);
+        free(neededc[j]);
+    }
+    free(neededo);
+    free(neededc);
+    for(int i = 0; i < bn; i++) {
+        free(outs[i]);
+        free(ins[i]);
+    }
+    free(outs);
+    free(ins);
+    if(ind)
+        printf("\n");
     if(p.isexec)
         linkapp(p, list, bn);
     if(p.islib)
@@ -704,6 +764,27 @@ int main(int argc, char *argv[])
         bake_project_t p = parse_proj_toml(b.projlist, idname.u.s, scrname.u.s);
         //printf("parsed project %s (id: %s) toml\n", scrname.u.s, idname.u.s);
         add_proj(p);
+        if(strcmp(p.srcs, "") == 0) {
+            fprintf(
+                stderr,
+                "error: srcs is '' for project '%s', you should instead use '.'\n",
+                scrname.u.s);
+            exit(1);
+        }
+        if(strcmp(p.bindir, "") == 0) {
+            fprintf(
+                stderr,
+                "error: bin is '' for project '%s', you should instead use '.'\n",
+                scrname.u.s);
+            exit(1);
+        }
+        if(strcmp(p.binname, "") == 0) {
+            fprintf(
+                stderr,
+                "error: binname is '' for project '%s', you should instead name the project\n",
+                scrname.u.s);
+            exit(1);
+        }
         free(idname.u.s);
         free(scrname.u.s);
     }

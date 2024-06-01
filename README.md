@@ -1,5 +1,5 @@
 # Bake
-Bake is a C build system with support for compiling both applications and libraries, as well as supporting external dependieces and other goodies.
+Bake is a C build system with support for compiling both applications and libraries, as well as supporting external dependieces, dynamic compliation, and other goodies.
 
 # NOTE
 you need to create the binary output directory as specified in `bake.toml`, or else `bake` will not work
