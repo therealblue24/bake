@@ -42,5 +42,5 @@ deps = []
 [ext.libtoml]
 loc = "tomlc99"
 chdir = "."
-buildcmd = ["make"]
+buildcmd = ["make", "-s"]
 ```
