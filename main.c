@@ -5,11 +5,61 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 #include <errno.h>
 #include <sys/stat.h>
 #include <dirent.h>
 
-#define VERSION "1.2.2"
+#define VERSION "1.2.2_01"
+void styl_reset()
+{
+    printf("\033[0m");
+}
+
+void styl_set_color(int col)
+{
+    printf("\033[38;5;%dm", col);
+}
+void styl_set_tcol(int r, int g, int b)
+{
+    printf("\033[38;2;%d;%d;%dm", r, g, b);
+}
+
+void styl_set_bold(bool dobold)
+{
+    if(dobold) {
+        printf("\033[1m");
+    } else {
+        printf("\033[22m");
+    }
+}
+
+void styl_set_underline(bool dounderline)
+{
+    if(dounderline) {
+        printf("\033[4m");
+    } else {
+        printf("\033[24m");
+    }
+}
+
+[[noreturn]] void report_error(const char *fmt, ...)
+{
+    styl_reset();
+    styl_set_underline(true);
+    styl_set_color(1);
+    styl_set_bold(true);
+    printf("Error");
+    styl_reset();
+    printf(": ");
+    va_list args;
+    va_start(args, fmt);
+    (void)vprintf(fmt, args);
+    va_end(args);
+    styl_reset();
+    printf("\nError occured, exiting program\n");
+    exit(1);
+}
 
 void chdir_h(const char *path)
 {
@@ -24,8 +74,7 @@ bool needs_rebuild(const char *output, const char *input)
 {
     struct stat statbuf = {};
     if(stat(input, &statbuf) < 0) {
-        fprintf(stderr, "stat(%s, /* ... */) failed: %s\n", input,
-                strerror(errno));
+        report_error("stat(%s, /* ... */) failed: %s", input, strerror(errno));
         exit(1);
     }
     int inp_path_time = statbuf.st_mtime;
@@ -33,8 +82,7 @@ bool needs_rebuild(const char *output, const char *input)
         if(errno == ENOENT) {
             return true;
         };
-        fprintf(stderr, "stat(%s, /* ... */) failed: %s\n", output,
-                strerror(errno));
+        report_error("stat(%s, /* ... */) failed: %s", output, strerror(errno));
         exit(1);
     }
     int out_path_time = statbuf.st_mtime;
@@ -95,45 +143,22 @@ void resetcwd()
     chdir_h(b.cwd);
 }
 
-void styl_reset()
-{
-    printf("\033[0m");
-}
-
-void styl_set_color(int col)
-{
-    printf("\033[38;5;%dm", col);
-}
-void styl_set_tcol(int r, int g, int b)
-{
-    printf("\033[38;2;%d;%d;%dm", r, g, b);
-}
-
-void styl_set_bold(bool dobold)
-{
-    if(dobold) {
-        printf("\033[1m");
-    } else {
-        printf("\033[22m");
-    }
-}
-
 void handlerr()
 {
     if(!b.toml) {
-        fprintf(stderr, "error to parse toml: %s\n", b.err);
+        report_error("error to parse toml: %s", b.err);
         exit(1);
     }
     if(!b.cfg.cfg) {
-        fprintf(stderr, "error to parse toml: %s\n", b.err);
+        report_error("error to parse toml: %s", b.err);
         exit(1);
     }
     if(!b.projlist) {
-        fprintf(stderr, "error to parse toml: %s\n", b.err);
+        report_error("error to parse toml: %s", b.err);
         exit(1);
     }
     if(!b.extroot) {
-        fprintf(stderr, "error to parse toml: %s\n", b.err);
+        report_error("error to parse toml: %s", b.err);
         exit(1);
     }
 }
@@ -289,15 +314,12 @@ void exec(int argc, char *argv[])
     } else {
         waitpid(forked_pid, &stat, 0);
         if(WIFSIGNALED(stat)) {
-            fprintf(
-                stderr,
-                "error: program expierenced error that is not related to the compilation of project\n");
-            exit(1);
+            report_error(
+                "program expierenced error that is not related to the compilation of project");
         }
         exitcode = WEXITSTATUS(stat);
         if(exitcode) {
-            fprintf(stderr, "error: program errored, terminating bake\n");
-            exit(1);
+            report_error("program errored, terminating bake");
         }
     }
     return;
@@ -514,8 +536,7 @@ void build_project(bake_project_t p)
                     }
                 }
                 if(dep_indx == -1) {
-                    fprintf(stderr, "error: dependicy '%s' not found\n",
-                            depnam.u.s);
+                    report_error("dependency '%s' not found", depnam.u.s);
                 }
                 styl_reset();
                 styl_set_bold(true);
@@ -537,7 +558,6 @@ void build_project(bake_project_t p)
     n = scandir(p.srcs, &list, parse_ext, alphasort);
     bn = n;
     if(n < 0) {
-        fprintf(stderr, "error: program error: scandir\nperror log: \n");
         perror("scandir");
         exit(1);
     }
@@ -636,8 +656,7 @@ bake_project_t parse_proj_toml(toml_table_t *projroot, char *target,
 {
     toml_table_t *proj = toml_table_in(projroot, target);
     if(!proj) {
-        fprintf(stderr, "error: cannot find [project.%s]\n", target);
-        exit(1);
+        report_error("cannot find [project.%s]", target);
     }
     bake_project_t ret;
     ret.isexec = false;
@@ -649,7 +668,7 @@ bake_project_t parse_proj_toml(toml_table_t *projroot, char *target,
     }
     if(strcmp(typ.u.s, "lib") == 0) {
         if(ret.isexec && !ret.islib) {
-            fprintf(stderr, "What? How?\n");
+            report_error("What? How?");
             exit(1);
         }
         ret.isexec = false;
@@ -686,13 +705,16 @@ int main(int argc, char *argv[])
     styl_reset();
     printf(" %s\n", VERSION);
     if(argc > 2) {
-        printf("error: excessive arguments\nhelp: %s [optional: bake file]\n",
-               argv[0]);
+        report_error("excessive arguments\nhelp: %s [optional: bake file]",
+                     argv[0]);
     }
     if(argc == 1) {
         strlcpy(b.bakefile, "bake.toml", PATH_MAX);
     } else {
         strlcpy(b.bakefile, argv[1], PATH_MAX);
+        if(access(b.bakefile, F_OK) != 0) {
+            report_error("bakefile '%s' does not exist", b.bakefile);
+        }
     }
     getcwd(b.cwd, PATH_MAX);
     b.cfg.cfg = (void *)1;
@@ -706,7 +728,13 @@ int main(int argc, char *argv[])
     printf("Using ");
     styl_reset();
     printf("Bakefile: %s\n", b.bakefile);
+
     FILE *f = fopen(b.bakefile, "r");
+    if(!f) {
+        report_error(
+            "bakefile '%s' is NULL, maybe it doesn't exist or program expierenced unexpected error\n",
+            b.bakefile);
+    }
     b.toml = toml_parse_file(f, b.err, 512);
     fclose(f);
     handlerr();
@@ -717,7 +745,7 @@ int main(int argc, char *argv[])
     toml_datum_t cfg_as = toml_string_in(b.cfg.cfg, "as");
     toml_datum_t cfg_ld = toml_string_in(b.cfg.cfg, "ld");
     if(!cfg_cc.ok || !cfg_as.ok || !cfg_ld.ok) {
-        fprintf(stderr, "error: cannot read configuration\n");
+        report_error("cannot read configuration");
     }
     b.cfg.cc = cfg_cc.u.s;
     b.cfg.as = cfg_as.u.s;
@@ -733,13 +761,11 @@ int main(int argc, char *argv[])
     //printf("reading projects\n");
     toml_array_t *projarr = toml_array_in(b.projlist, "sub");
     if(!projarr) {
-        fprintf(stderr, "error: cannot read project.sub\n");
-        exit(1);
+        report_error("cannot read project.sub");
     }
     toml_array_t *extlist = toml_array_in(b.projlist, "ext");
     if(!extlist) {
-        fprintf(stderr, "error: cannot read project.ext\n");
-        exit(1);
+        report_error("cannot read project.ext");
     }
     b.extroot = toml_table_in(b.toml, "ext");
     handlerr();
@@ -751,13 +777,11 @@ int main(int argc, char *argv[])
         }
         toml_datum_t scrname = toml_string_at(projprop, 0);
         if(!scrname.ok) {
-            fprintf(stderr, "error: cannot read project list\n");
-            exit(1);
+            report_error("cannot read project list");
         }
         toml_datum_t idname = toml_string_at(projprop, 1);
         if(!idname.ok) {
-            fprintf(stderr, "error: cannot read project list\n");
-            exit(1);
+            report_error("cannot read project list");
         }
         //printf("found project %s (id: %s), adding it to project list\n",
         //       scrname.u.s, idname.u.s);
@@ -765,25 +789,19 @@ int main(int argc, char *argv[])
         //printf("parsed project %s (id: %s) toml\n", scrname.u.s, idname.u.s);
         add_proj(p);
         if(strcmp(p.srcs, "") == 0) {
-            fprintf(
-                stderr,
-                "error: srcs is '' for project '%s', you should instead use '.'\n",
+            report_error(
+                "error: srcs is '' for project '%s', you should instead use '.'",
                 scrname.u.s);
-            exit(1);
         }
         if(strcmp(p.bindir, "") == 0) {
-            fprintf(
-                stderr,
-                "error: bin is '' for project '%s', you should instead use '.'\n",
+            report_error(
+                "error: bin is '' for project '%s', you should instead use '.'",
                 scrname.u.s);
-            exit(1);
         }
         if(strcmp(p.binname, "") == 0) {
-            fprintf(
-                stderr,
-                "error: binname is '' for project '%s', you should instead name the project\n",
+            report_error(
+                "error: binname is '' for project '%s', you should instead name the project",
                 scrname.u.s);
-            exit(1);
         }
         free(idname.u.s);
         free(scrname.u.s);
@@ -795,12 +813,12 @@ int main(int argc, char *argv[])
         }
         toml_datum_t scrname = toml_string_at(extprop, 0);
         if(!scrname.ok) {
-            fprintf(stderr, "error: cannot read project list\n");
+            report_error("error: cannot read project list");
             exit(1);
         }
         toml_datum_t idname = toml_string_at(extprop, 1);
         if(!idname.ok) {
-            fprintf(stderr, "error: cannot read project list\n");
+            report_error("error: cannot read project list");
             exit(1);
         }
         bake_ext_t e = parse_extproj_toml(b.extroot, idname.u.s, scrname.u.s);
