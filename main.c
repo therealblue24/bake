@@ -705,7 +705,7 @@ int main(int argc, char *argv[])
     styl_set_color(3);
     printf("Using ");
     styl_reset();
-    printf("bakefile: %s\n", b.bakefile);
+    printf("Bakefile: %s\n", b.bakefile);
     FILE *f = fopen(b.bakefile, "r");
     b.toml = toml_parse_file(f, b.err, 512);
     fclose(f);
